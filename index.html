@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Presupuesto Obra — Ingreso</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/login.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+</head>
+<body class="login-body">
+
+  <div class="login-bg">
+    <div class="login-bg-shape s1"></div>
+    <div class="login-bg-shape s2"></div>
+    <div class="login-bg-shape s3"></div>
+  </div>
+
+  <div class="login-wrap">
+    <div class="login-card">
+
+      <div class="login-logo">
+        <div class="logo-icon"><i class="ti ti-building-arch"></i></div>
+        <div>
+          <div class="logo-title">ObrasPresup</div>
+          <div class="logo-sub">Sistema de presupuesto de obra civil</div>
+        </div>
+      </div>
+
+      <div class="login-header">
+        <h1>Bienvenido</h1>
+        <p>Ingresa tus credenciales para continuar</p>
+      </div>
+
+      <div id="loginError" class="login-error" style="display:none;">
+        <i class="ti ti-alert-circle"></i>
+        <span id="loginErrorMsg">Credenciales incorrectas.</span>
+      </div>
+
+      <div class="form-group">
+        <label for="username"><i class="ti ti-user"></i> Usuario</label>
+        <input type="text" id="username" placeholder="Ej: admin" autocomplete="username">
+      </div>
+
+      <div class="form-group">
+        <label for="password"><i class="ti ti-lock"></i> Contraseña</label>
+        <div class="input-pwd">
+          <input type="password" id="password" placeholder="••••••••" autocomplete="current-password">
+          <button class="pwd-toggle" onclick="togglePwd()" aria-label="Mostrar contraseña" type="button">
+            <i class="ti ti-eye" id="eyeIcon"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="login-hint">
+        <i class="ti ti-info-circle"></i>
+        Demo: usuario <strong>admin</strong> · contraseña <strong>1234</strong>
+      </div>
+
+      <button class="btn-login" onclick="doLogin()" id="loginBtn">
+        <i class="ti ti-login"></i> Ingresar
+      </button>
+
+      <div class="login-footer">
+        <i class="ti ti-shield-check"></i> Acceso restringido a personal autorizado
+      </div>
+    </div>
+
+    <div class="login-brand">
+      <div class="brand-tag">Gobierno Autónomo Municipal · Secretaría de Planificación</div>
+    </div>
+  </div>
+
+  <script src="js/auth.js"></script>
+</body>
+</html>

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ajustador de Presupuesto — Obra Civil</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/app.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+
+  <!-- NAVBAR -->
+  <nav class="navbar">
+    <div class="nav-left">
+      <div class="nav-logo">
+        <i class="ti ti-building-arch"></i>
+        <span>ObrasPresup</span>
+      </div>
+    </div>
+    <div class="nav-right">
+      <div class="nav-user">
+        <div class="nav-avatar" id="navAvatar">AD</div>
+        <span class="nav-username" id="navUsername">Admin</span>
+      </div>
+      <button class="btn-logout" onclick="logout()" title="Cerrar sesión">
+        <i class="ti ti-logout"></i>
+        <span>Salir</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- HERO HEADER -->
+  <div class="app-hero">
+    <div class="hero-inner">
+      <div class="hero-text">
+        <div class="hero-eyebrow"><i class="ti ti-calculator"></i> Ajustador de cantidades</div>
+        <h1 class="hero-title">Presupuesto General del Proyecto</h1>
+        <input class="hero-proyecto" id="proyNombre" type="text"
+          value="CONST. EMPEDRADO DE VIAS SECTOR SUD MZNS 198-277 OTB AMIG D4"
+          placeholder="Nombre del proyecto...">
+      </div>
+      <div class="hero-metrics">
+        <div class="hm-card">
+          <div class="hm-label">Total actual</div>
+          <div class="hm-value" id="mActual">— Bs</div>
+        </div>
+        <div class="hm-card hm-target">
+          <div class="hm-label">Monto objetivo</div>
+          <div class="hm-value" id="mTarget">— Bs</div>
+        </div>
+        <div class="hm-card">
+          <div class="hm-label">Diferencia</div>
+          <div class="hm-value" id="mDiff">— Bs</div>
+        </div>
+        <div class="hm-card">
+          <div class="hm-label">Factor escala</div>
+          <div class="hm-value" id="mFactor">—</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <main class="main-wrap">
+
+    <!-- PANEL DE CONTROL -->
+    <section class="control-panel">
+
+      <div class="cp-block">
+        <label class="cp-label"><i class="ti ti-target"></i> Monto objetivo (Bs)</label>
+        <input type="number" id="targetAmt" class="cp-input" value="187690" step="0.01">
+      </div>
+
+      <div class="cp-block">
+        <label class="cp-label"><i class="ti ti-adjustments-horizontal"></i> Método de ajuste</label>
+        <select id="method" class="cp-input">
+          <option value="prop">Proporcional — escala todos los ítems</option>
+          <option value="sel">Solo ítems seleccionados</option>
+          <option value="big">Mayor peso absorbe la diferencia</option>
+        </select>
+      </div>
+
+      <div class="cp-actions">
+        <button class="btn btn-primary" onclick="calcAjuste()">
+          <i class="ti ti-adjustments"></i> Ajustar cantidades
+        </button>
+        <button class="btn btn-secondary" onclick="resetQtys()">
+          <i class="ti ti-refresh"></i> Restablecer
+        </button>
+        <button class="btn btn-excel" onclick="exportXlsx()">
+          <i class="ti ti-file-spreadsheet"></i> Exportar Excel
+        </button>
+      </div>
+    </section>
+
+    <!-- ZONA DE PEGADO -->
+    <div class="paste-zone" id="pasteZone" tabindex="0">
+      <i class="ti ti-clipboard-text paste-icon"></i>
+      <div class="paste-text">
+        <strong>Pegar tabla desde Excel</strong>
+        <span>Copia las filas en Excel → haz clic aquí → Ctrl+V<br>Columnas: Descripción · Unidad · Cantidad · Precio unitario</span>
+      </div>
+    </div>
+
+    <!-- TOOLBAR DE ÍTEMS -->
+    <div class="items-toolbar">
+      <label class="chk-all-label">
+        <input type="checkbox" id="chkAll" onchange="toggleAll(this)">
+        <span>Seleccionar todos</span>
+      </label>
+      <div class="toolbar-right">
+        <button class="btn btn-sm btn-ghost" onclick="addRow()">
+          <i class="ti ti-plus"></i> Agregar ítem
+        </button>
+        <button class="btn btn-sm btn-ghost" onclick="loadDefault()">
+          <i class="ti ti-file-import"></i> Cargar ejemplo
+        </button>
+      </div>
+    </div>
+
+    <!-- LISTA DE ÍTEMS -->
+    <div class="items-list" id="itemsList"></div>
+
+    <!-- TOTAL -->
+    <div class="total-bar">
+      <div class="total-label">
+        <i class="ti ti-calculator"></i> Total del presupuesto
+      </div>
+      <div class="total-value" id="totalVal">0.00 Bs</div>
+    </div>
+
+  </main>
+
+  <!-- TOAST -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="js/auth.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
