@@ -3,139 +3,161 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Ajustador de Presupuesto — Obra Civil</title>
+  <title>ObrasPresup — Ajustador</title>
   <link rel="stylesheet" href="css/styles.css">
   <link rel="stylesheet" href="css/app.css">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 
-  <!-- NAVBAR -->
   <nav class="navbar">
-    <div class="nav-left">
-      <div class="nav-logo">
-        <i class="ti ti-building-arch"></i>
-        <span>ObrasPresup</span>
-      </div>
-    </div>
+    <div class="nav-logo"><i class="ti ti-building-arch"></i><span>ObrasPresup</span></div>
     <div class="nav-right">
       <div class="nav-user">
         <div class="nav-avatar" id="navAvatar">AD</div>
         <span class="nav-username" id="navUsername">Admin</span>
       </div>
-      <button class="btn-logout" onclick="logout()" title="Cerrar sesión">
-        <i class="ti ti-logout"></i>
-        <span>Salir</span>
-      </button>
+      <button class="btn-logout" onclick="logout()"><i class="ti ti-logout"></i><span>Salir</span></button>
     </div>
   </nav>
 
-  <!-- HERO HEADER -->
   <div class="app-hero">
     <div class="hero-inner">
-      <div class="hero-text">
-        <div class="hero-eyebrow"><i class="ti ti-calculator"></i> Ajustador de cantidades</div>
-        <h1 class="hero-title">Presupuesto General del Proyecto</h1>
-        <input class="hero-proyecto" id="proyNombre" type="text"
-          value="CONST. EMPEDRADO DE VIAS SECTOR SUD MZNS 198-277 OTB AMIG D4"
-          placeholder="Nombre del proyecto...">
-      </div>
+      <div class="hero-eyebrow"><i class="ti ti-calculator"></i> Ajustador de cantidades</div>
+      <h1 class="hero-title">Presupuesto General del Proyecto</h1>
+      <input class="hero-proyecto" id="proyNombre" type="text"
+        value="CONST. EMPEDRADO DE VIAS SECTOR SUD MZNS 198-277 OTB AMIG D4"
+        placeholder="Nombre del proyecto...">
       <div class="hero-metrics">
-        <div class="hm-card">
-          <div class="hm-label">Total actual</div>
-          <div class="hm-value" id="mActual">— Bs</div>
-        </div>
-        <div class="hm-card hm-target">
-          <div class="hm-label">Monto objetivo</div>
-          <div class="hm-value" id="mTarget">— Bs</div>
-        </div>
-        <div class="hm-card">
-          <div class="hm-label">Diferencia</div>
-          <div class="hm-value" id="mDiff">— Bs</div>
-        </div>
-        <div class="hm-card">
-          <div class="hm-label">Factor escala</div>
-          <div class="hm-value" id="mFactor">—</div>
-        </div>
+        <div class="hm-card"><div class="hm-label">Total actual</div><div class="hm-value" id="mActual">— Bs</div></div>
+        <div class="hm-card hm-target"><div class="hm-label">Monto objetivo</div><div class="hm-value" id="mTarget">— Bs</div></div>
+        <div class="hm-card"><div class="hm-label">Diferencia</div><div class="hm-value" id="mDiff">— Bs</div></div>
+        <div class="hm-card"><div class="hm-label">Factor escala</div><div class="hm-value" id="mFactor">—</div></div>
       </div>
     </div>
   </div>
 
-  <!-- MAIN -->
   <main class="main-wrap">
 
-    <!-- PANEL DE CONTROL -->
-    <section class="control-panel">
-
-      <div class="cp-block">
-        <label class="cp-label"><i class="ti ti-target"></i> Monto objetivo (Bs)</label>
-        <input type="number" id="targetAmt" class="cp-input" value="187690" step="0.01">
+    <!-- IMPORTAR -->
+    <section class="import-card">
+      <div class="import-title"><i class="ti ti-file-spreadsheet"></i> Importar datos</div>
+      <div class="import-tabs">
+        <div class="itab act" id="tabFile" onclick="switchTab('file')"><i class="ti ti-upload"></i> Archivo Excel</div>
+        <div class="itab" id="tabPaste" onclick="switchTab('paste')"><i class="ti ti-clipboard-text"></i> Pegar desde Excel</div>
       </div>
 
-      <div class="cp-block">
-        <label class="cp-label"><i class="ti ti-adjustments-horizontal"></i> Método de ajuste</label>
-        <select id="method" class="cp-input">
-          <option value="prop">Proporcional — escala todos los ítems</option>
-          <option value="sel">Solo ítems seleccionados</option>
-          <option value="big">Mayor peso absorbe la diferencia</option>
-        </select>
+      <!-- TAB ARCHIVO -->
+      <div id="panelFile">
+        <div class="file-drop" id="fileDrop">
+          <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" onchange="handleFile(this.files[0])">
+          <div class="fd-icon"><i class="ti ti-file-spreadsheet"></i></div>
+          <div class="fd-text">Selecciona o arrastra tu archivo Excel</div>
+          <div class="fd-hint">Compatible con .xlsx · .xls · .csv</div>
+        </div>
+        <div class="file-name" id="fileName"><i class="ti ti-check"></i><span id="fileNameText"></span></div>
+        <div class="col-map" id="colMap">
+          <div class="col-map-title"><i class="ti ti-columns"></i> ¿Qué columna es cada campo?</div>
+          <div class="col-map-grid">
+            <div class="cmf"><label>Descripción</label><select id="mapDesc"></select></div>
+            <div class="cmf"><label>Unidad</label><select id="mapUnit"></select></div>
+            <div class="cmf"><label>Cantidad</label><select id="mapQty"></select></div>
+            <div class="cmf"><label>Precio unitario</label><select id="mapPrice"></select></div>
+          </div>
+          <div class="col-map-actions">
+            <button class="btn btn-primary" onclick="importFromFile()"><i class="ti ti-check"></i> Importar</button>
+            <button class="btn btn-ghost" onclick="cancelFile()"><i class="ti ti-x"></i> Cancelar</button>
+          </div>
+        </div>
       </div>
 
-      <div class="cp-actions">
-        <button class="btn btn-primary" onclick="calcAjuste()">
-          <i class="ti ti-adjustments"></i> Ajustar cantidades
-        </button>
-        <button class="btn btn-secondary" onclick="resetQtys()">
-          <i class="ti ti-refresh"></i> Restablecer
-        </button>
-        <button class="btn btn-excel" onclick="exportXlsx()">
-          <i class="ti ti-file-spreadsheet"></i> Exportar Excel
-        </button>
+      <!-- TAB PEGAR -->
+      <div id="panelPaste" style="display:none;">
+        <div class="paste-zone" id="pasteZone" tabindex="0">
+          <i class="ti ti-clipboard-text paste-icon"></i>
+          <div class="paste-text">
+            <strong>Clic aquí y pega con Ctrl+V</strong>
+            <span>Copia filas en Excel → pega aquí<br>Columnas: Descripción · Unidad · Cantidad · Precio unitario</span>
+          </div>
+          <div class="fmt-indicator">
+            Formato detectado: <span class="fmt-badge nd" id="fmtBadge">Sin datos aún</span>
+          </div>
+        </div>
       </div>
     </section>
 
-    <!-- ZONA DE PEGADO -->
-    <div class="paste-zone" id="pasteZone" tabindex="0">
-      <i class="ti ti-clipboard-text paste-icon"></i>
-      <div class="paste-text">
-        <strong>Pegar tabla desde Excel</strong>
-        <span>Copia las filas en Excel → haz clic aquí → Ctrl+V<br>Columnas: Descripción · Unidad · Cantidad · Precio unitario</span>
+    <!-- AJUSTE -->
+    <section class="control-panel">
+      <div class="cp-row">
+        <div class="cp-block">
+          <label class="cp-label"><i class="ti ti-target"></i> Monto objetivo (Bs)</label>
+          <input type="number" id="targetAmt" class="cp-input" value="187690" step="0.01">
+        </div>
+        <div class="cp-block">
+          <label class="cp-label"><i class="ti ti-adjustments-horizontal"></i> Método de ajuste</label>
+          <select id="method" class="cp-input">
+            <option value="prop">Proporcional — todos los ítems</option>
+            <option value="sel">Solo ítems seleccionados</option>
+            <option value="big">Mayor peso absorbe la diferencia</option>
+            <option value="pct">Por porcentaje (%)</option>
+          </select>
+        </div>
       </div>
-    </div>
+      <div id="pctWrap" style="display:none;" class="cp-block">
+        <label class="cp-label"><i class="ti ti-percent"></i> Porcentaje (+ sube / - baja)</label>
+        <input type="number" id="pctVal" class="cp-input" value="10" step="0.1" placeholder="Ej: 15 para +15%">
+      </div>
+      <div class="cp-block">
+        <label class="cp-label"><i class="ti ti-decimal"></i> Decimales en cantidades</label>
+        <div class="dec-pills">
+          <div class="dec-pill" onclick="setDec(0)">0</div>
+          <div class="dec-pill" onclick="setDec(1)">1</div>
+          <div class="dec-pill act" onclick="setDec(2)">2</div>
+          <div class="dec-pill" onclick="setDec(3)">3</div>
+          <div class="dec-pill" onclick="setDec(4)">4</div>
+        </div>
+      </div>
+      <div class="cp-actions">
+        <button class="btn btn-primary" onclick="calcAjuste()"><i class="ti ti-adjustments"></i> Ajustar cantidades</button>
+        <button class="btn btn-secondary" onclick="resetQtys()"><i class="ti ti-refresh"></i> Restablecer</button>
+        <button class="btn btn-excel" onclick="exportXlsx()"><i class="ti ti-file-spreadsheet"></i> Exportar Excel</button>
+      </div>
+    </section>
 
-    <!-- TOOLBAR DE ÍTEMS -->
+    <!-- TOOLBAR -->
     <div class="items-toolbar">
       <label class="chk-all-label">
         <input type="checkbox" id="chkAll" onchange="toggleAll(this)">
         <span>Seleccionar todos</span>
       </label>
       <div class="toolbar-right">
-        <button class="btn btn-sm btn-ghost" onclick="addRow()">
-          <i class="ti ti-plus"></i> Agregar ítem
-        </button>
-        <button class="btn btn-sm btn-ghost" onclick="loadDefault()">
-          <i class="ti ti-file-import"></i> Cargar ejemplo
-        </button>
+        <button class="btn btn-sm btn-ghost" onclick="addRow()"><i class="ti ti-plus"></i> Agregar ítem</button>
+        <button class="btn btn-sm btn-ghost" onclick="loadDefault()"><i class="ti ti-file-import"></i> Cargar ejemplo</button>
       </div>
     </div>
 
-    <!-- LISTA DE ÍTEMS -->
+    <!-- ÍTEMS -->
     <div class="items-list" id="itemsList"></div>
 
     <!-- TOTAL -->
     <div class="total-bar">
-      <div class="total-label">
-        <i class="ti ti-calculator"></i> Total del presupuesto
-      </div>
+      <div class="total-label"><i class="ti ti-calculator"></i> Total del presupuesto</div>
       <div class="total-value" id="totalVal">0.00 Bs</div>
     </div>
 
+    <!-- HISTORIAL -->
+    <section class="hist-section">
+      <div class="hist-header">
+        <div class="section-label"><i class="ti ti-history"></i> Historial de ajustes</div>
+        <button class="btn btn-sm btn-ghost" onclick="clearHistory()">Limpiar</button>
+      </div>
+      <div class="hist-list" id="histList"><div class="hist-empty">Sin ajustes aún</div></div>
+    </section>
+
   </main>
 
-  <!-- TOAST -->
   <div class="toast-container" id="toastContainer"></div>
 
   <script src="js/auth.js"></script>
