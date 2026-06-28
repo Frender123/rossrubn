@@ -120,6 +120,9 @@
 .item-badges{display:flex;align-items:center;gap:4px;}
 .badge-lock{font-size:10px;color:var(--g600);font-weight:500;padding:2px 6px;background:var(--g50);border-radius:999px;white-space:nowrap;}
 .badge-warn{font-size:10px;color:var(--a800);background:var(--a50);border-radius:4px;padding:2px 6px;}
+.badge-int{font-size:10px;color:var(--p800);background:var(--p50);border-radius:4px;padding:2px 6px;font-weight:600;}
+.btn-danger{background:#FEF2F2;color:#991B1B;border:1px solid #FCA5A5;}
+.btn-danger:hover{background:#FEE2E2;}
 .item-icons{display:flex;gap:2px;align-items:center;}
 .icon-btn{background:transparent;border:none;cursor:pointer;padding:4px;border-radius:6px;font-size:16px;color:var(--gray400);display:flex;align-items:center;transition:all .15s;}
 .icon-btn:hover{background:var(--gray100);}

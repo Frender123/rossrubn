@@ -1,20 +1,46 @@
 /* ===================================================
    app.js — Ajustador de presupuesto de obra civil
-   v3.0 — importación directa Excel, separadores
-          inteligentes, decimales, condiciones,
-          bloqueo de ítems, historial con restaurar
+   v4.0 — unidades enteras, diferencia cero exacto,
+          recomendaciones, botón limpiar
    =================================================== */
+
+/* ── Unidades que NO admiten decimales (cantidades enteras) ── */
+const UNIDADES_ENTERAS = [
+  'glb','glb.','global',
+  'pza','pza.','pieza','piezas',
+  'und','und.','unid','unid.','unidad','unidades',
+  'u','un',
+  'jgo','jgo.','juego','juegos',
+  'lot','lot.','lote','lotes',
+  'mes','meses',
+  'dia','dia.','días','dias',
+  'semana','semanas',
+  'viaje','viajes',
+  'pto','pto.','punto','puntos',
+];
+
+function esUnidadEntera(unit) {
+  return UNIDADES_ENTERAS.includes(String(unit).trim().toLowerCase());
+}
+
+/** Aplica decimales según la unidad del ítem:
+    - unidad entera → Math.round (0 decimales)
+    - otras        → decimals globales           */
+function redondearSegunUnidad(item, qty) {
+  if (esUnidadEntera(item.unit)) return Math.round(qty);
+  return rawNum(qty, decimals);
+}
 
 /* ── Datos de ejemplo ── */
 const DEFAULT_ITEMS = [
-  { desc:'INSTALACIÓN DE FAENAS (OBRAS MENORES) HASTA 500.000 BS.', unit:'glb.', qty:1.0,    price:3850.32, locked:false, minQty:'', maxQty:'' },
+  { desc:'INSTALACIÓN DE FAENAS (OBRAS MENORES) HASTA 500.000 BS.', unit:'glb.', qty:1,      price:3850.32, locked:false, minQty:'', maxQty:'' },
   { desc:'REPLANTEO Y CONTROL TOPOGRÁFICO (LINEAL)',                  unit:'m',    qty:264.59, price:7.33,    locked:false, minQty:'', maxQty:'' },
-  { desc:'PERFILADO DE SUBRASANTE',                                   unit:'m²',   qty:2360.0, price:8.74,    locked:false, minQty:'', maxQty:'' },
-  { desc:'EMPEDRADO DE VIAS',                                         unit:'m²',   qty:2360.0, price:46.73,   locked:false, minQty:'', maxQty:'' },
-  { desc:'COMPACTADO DE EMPEDRADO CON EQUIPO',                        unit:'m²',   qty:2360.0, price:4.15,    locked:false, minQty:'', maxQty:'' },
+  { desc:'PERFILADO DE SUBRASANTE',                                   unit:'m²',   qty:2360,   price:8.74,    locked:false, minQty:'', maxQty:'' },
+  { desc:'EMPEDRADO DE VIAS',                                         unit:'m²',   qty:2360,   price:46.73,   locked:false, minQty:'', maxQty:'' },
+  { desc:'COMPACTADO DE EMPEDRADO CON EQUIPO',                        unit:'m²',   qty:2360,   price:4.15,    locked:false, minQty:'', maxQty:'' },
   { desc:'CORDON DE REMATE DE HºCº 50% P.D.',                        unit:'m',    qty:34.3,   price:176.37,  locked:false, minQty:'', maxQty:'' },
   { desc:'CONFORMACION DE TERRAPLEN PROV. Y COLOC.',                  unit:'m³',   qty:342.07, price:97.49,   locked:false, minQty:'', maxQty:'' },
-  { desc:'LIMPIEZA GENERAL',                                          unit:'glb.', qty:1.0,    price:1799.15, locked:false, minQty:'', maxQty:'' },
+  { desc:'LIMPIEZA GENERAL',                                          unit:'glb.', qty:1,      price:1799.15, locked:false, minQty:'', maxQty:'' },
 ];
 
 /* ── Estado ── */
@@ -24,7 +50,7 @@ let checked  = [];
 let history  = [];
 let decimals = 2;
 
-/* ── Estado importación archivo ── */
+/* ── Estado importación ── */
 let fileHeaders = [];
 let fileRows    = [];
 let fileWb      = null;
@@ -32,47 +58,33 @@ let fileWb      = null;
 /* ═══════════════════════════════════════════════════
    UTILIDADES NUMÉRICAS
 ═══════════════════════════════════════════════════ */
-
-/** Número puro con N decimales — para inputs type=number (solo acepta punto) */
 function rawNum(n, d) {
   return parseFloat((+n).toFixed(d != null ? d : 4));
 }
 
-/** Formateo visual para mostrar en pantalla (coma boliviana) */
 function fmtDisp(n) {
   return (+n).toLocaleString('es-BO', { minimumFractionDigits:2, maximumFractionDigits:2 });
 }
 
-/* ── Detección de formato de separadores ──
-   Analiza el texto pegado completo UNA sola vez.
-   Cuenta votos: si mayoría de números termina en ,XX → decimal=coma
-                 si mayoría termina en .XX  → decimal=punto         */
 function detectarFormato(texto) {
   const tokens = texto.match(/\d[\d.,]+\d/g) || [];
   let votoComa = 0, votoPunto = 0;
   for (const t of tokens) {
-    const hasDot   = t.includes('.');
-    const hasComma = t.includes(',');
+    const hasDot = t.includes('.'), hasComma = t.includes(',');
     if (!hasDot && !hasComma) continue;
-    if (hasDot && hasComma) {
-      t.lastIndexOf(',') > t.lastIndexOf('.') ? votoComa++ : votoPunto++;
-    } else if (hasComma) {
-      /,\d{1,2}$/.test(t) ? votoComa++ : votoPunto++;
-    } else {
-      /\.\d{1,2}$/.test(t) ? votoPunto++ : votoComa++;
-    }
+    if (hasDot && hasComma) { t.lastIndexOf(',') > t.lastIndexOf('.') ? votoComa++ : votoPunto++; }
+    else if (hasComma) { /,\d{1,2}$/.test(t) ? votoComa++ : votoPunto++; }
+    else               { /\.\d{1,2}$/.test(t) ? votoPunto++ : votoComa++; }
   }
   return votoComa >= votoPunto ? 'coma' : 'punto';
 }
 
-/** Parsear un número conociendo el formato del lote */
 function parsearNum(s, fmt) {
   if (typeof s === 'number') return isFinite(s) ? s : 0;
-  s = String(s).trim();
-  if (!s) return 0;
+  s = String(s).trim(); if (!s) return 0;
   return fmt === 'coma'
-    ? parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0
-    : parseFloat(s.replace(/,/g, ''))                   || 0;
+    ? parseFloat(s.replace(/\./g,'').replace(',','.')) || 0
+    : parseFloat(s.replace(/,/g,''))                  || 0;
 }
 
 /* ═══════════════════════════════════════════════════
@@ -85,7 +97,134 @@ function showToast(msg, type = 'ok') {
   t.className = 'toast ' + type;
   t.innerHTML = `<i class="ti ${icons[type] || 'ti-info-circle'}"></i> ${msg}`;
   container.appendChild(t);
-  setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 350); }, 3000);
+  setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 350); }, 3500);
+}
+
+/* ═══════════════════════════════════════════════════
+   MODAL DE RECOMENDACIONES
+═══════════════════════════════════════════════════ */
+function mostrarRecomendacion(diff, target, total, method) {
+  // Eliminar modal anterior si existe
+  const old = document.getElementById('recomModal');
+  if (old) old.remove();
+
+  const absDiff = Math.abs(diff);
+  const pct     = total > 0 ? (absDiff / total * 100).toFixed(2) : 0;
+  const esMas   = diff > 0; // total > target → hay que bajar
+
+  // Generar recomendaciones según situación
+  const recs = [];
+
+  // ¿Hay ítems bloqueados?
+  const bloqueados = items.filter(i => i.locked);
+  if (bloqueados.length > 0) {
+    recs.push({
+      icon: 'ti-lock-open',
+      color: '#185FA5',
+      bg: '#E6F1FB',
+      titulo: 'Desbloquear ítems',
+      texto: `Tienes ${bloqueados.length} ítem(s) bloqueados. Desbloquearlos permitiría distribuir mejor la diferencia de ${fmtDisp(absDiff)} Bs.`
+    });
+  }
+
+  // ¿Hay ítems con condiciones muy restrictivas?
+  const conConds = items.filter(i => !i.locked && (i.minQty !== '' || i.maxQty !== ''));
+  if (conConds.length > 0) {
+    recs.push({
+      icon: 'ti-adjustments-off',
+      color: '#854F0B',
+      bg: '#FAEEDA',
+      titulo: 'Revisar condiciones mínimas/máximas',
+      texto: `${conConds.length} ítem(s) tienen condiciones que limitan el ajuste. Ampliar esos rangos puede ayudar a llegar a cero.`
+    });
+  }
+
+  // ¿Hay ítems con unidad entera que absorbieron el redondeo?
+  const enterosAjustables = items.filter(i => !i.locked && esUnidadEntera(i.unit) && i.price > 0);
+  if (enterosAjustables.length > 0) {
+    recs.push({
+      icon: 'ti-number',
+      color: '#534AB7',
+      bg: '#EEEDFE',
+      titulo: 'Ítems con unidad entera',
+      texto: `${enterosAjustables.length} ítem(s) usan unidades enteras (glb., pza., etc.) y no pueden fraccionarse. La diferencia de ${fmtDisp(absDiff)} Bs puede venir del redondeo.`
+    });
+  }
+
+  // Recomendar método alternativo
+  if (method === 'prop') {
+    recs.push({
+      icon: 'ti-target',
+      color: '#0F6E56',
+      bg: '#E1F5EE',
+      titulo: 'Prueba "Mayor peso absorbe"',
+      texto: 'Este método concentra toda la diferencia en el ítem de mayor valor, logrando diferencia cero si ese ítem no tiene restricciones.'
+    });
+  }
+  if (method === 'big' || method === 'sel') {
+    recs.push({
+      icon: 'ti-percentage',
+      color: '#0F6E56',
+      bg: '#E1F5EE',
+      titulo: 'Prueba el método Proporcional',
+      texto: 'El ajuste proporcional distribuye la diferencia entre todos los ítems desbloqueados, reduciendo el impacto individual.'
+    });
+  }
+
+  // Recomendar ajustar precio unitario
+  recs.push({
+    icon: 'ti-coin',
+    color: '#993C1D',
+    bg: '#FAECE7',
+    titulo: 'Ajustar precio unitario',
+    texto: `Si las cantidades no pueden moverse más, considera revisar el precio unitario del ítem de mayor peso para absorber los ${fmtDisp(absDiff)} Bs restantes.`
+  });
+
+  const modal = document.createElement('div');
+  modal.id = 'recomModal';
+  modal.style.cssText = `
+    position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9000;
+    display:flex;align-items:center;justify-content:center;padding:16px;
+  `;
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:20px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,.22);">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+        <div style="width:36px;height:36px;background:#FAEEDA;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <i class="ti ti-bulb" style="font-size:20px;color:#854F0B;"></i>
+        </div>
+        <div>
+          <div style="font-size:14px;font-weight:600;color:#1a1a1a;">Diferencia residual: ${fmtDisp(absDiff)} Bs (${pct}%)</div>
+          <div style="font-size:12px;color:#6B7280;">No se pudo llegar a cero exacto — aquí te explicamos por qué y qué puedes hacer</div>
+        </div>
+        <button onclick="cerrarModal()" style="margin-left:auto;background:transparent;border:none;cursor:pointer;font-size:20px;color:#6B7280;padding:4px;">
+          <i class="ti ti-x"></i>
+        </button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        ${recs.map(r => `
+          <div style="background:${r.bg};border-radius:10px;padding:12px;display:flex;gap:10px;align-items:flex-start;">
+            <div style="width:28px;height:28px;border-radius:6px;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <i class="ti ${r.icon}" style="font-size:16px;color:${r.color};"></i>
+            </div>
+            <div>
+              <div style="font-size:13px;font-weight:600;color:${r.color};margin-bottom:3px;">${r.titulo}</div>
+              <div style="font-size:12px;color:#374151;line-height:1.5;">${r.texto}</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      <button onclick="cerrarModal()" style="width:100%;margin-top:14px;height:40px;background:#085041;color:#9FE1CB;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;">
+        <i class="ti ti-check"></i> Entendido
+      </button>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) cerrarModal(); });
+}
+
+function cerrarModal() {
+  const m = document.getElementById('recomModal');
+  if (m) m.remove();
 }
 
 /* ═══════════════════════════════════════════════════
@@ -100,17 +239,13 @@ function switchTab(t) {
 
 /* ═══════════════════════════════════════════════════
    IMPORTAR DESDE ARCHIVO EXCEL
-   SheetJS lee los números como JS numbers puros →
-   NO hay problema de separadores de miles/decimales
 ═══════════════════════════════════════════════════ */
 const fileDrop = document.getElementById('fileDrop');
 fileDrop.addEventListener('dragover',  e => { e.preventDefault(); fileDrop.classList.add('drag'); });
 fileDrop.addEventListener('dragleave', ()  => fileDrop.classList.remove('drag'));
 fileDrop.addEventListener('drop', e => {
-  e.preventDefault();
-  fileDrop.classList.remove('drag');
-  const f = e.dataTransfer.files[0];
-  if (f) handleFile(f);
+  e.preventDefault(); fileDrop.classList.remove('drag');
+  const f = e.dataTransfer.files[0]; if (f) handleFile(f);
 });
 
 function handleFile(file) {
@@ -120,33 +255,25 @@ function handleFile(file) {
     try {
       const data = new Uint8Array(e.target.result);
       fileWb = XLSX.read(data, { type:'array', cellDates:true });
-      const sheetName = fileWb.SheetNames[0];
-      const ws = fileWb.Sheets[sheetName];
-      /* raw:true → números salen como JS numbers, no como texto formateado */
+      const ws   = fileWb.Sheets[fileWb.SheetNames[0]];
       const json = XLSX.utils.sheet_to_json(ws, { header:1, raw:true, defval:'' });
-
       if (!json.length) { showToast('El archivo está vacío.', 'err'); return; }
 
-      /* Detectar fila de encabezado: primera con ≥2 celdas de texto */
       let headerRow = 0;
       for (let i = 0; i < Math.min(10, json.length); i++) {
-        const textCells = json[i].filter(c => typeof c === 'string' && c.trim().length > 1);
-        if (textCells.length >= 2) { headerRow = i; break; }
+        if (json[i].filter(c => typeof c === 'string' && c.trim().length > 1).length >= 2) {
+          headerRow = i; break;
+        }
       }
-
-      fileHeaders = json[headerRow].map((h, i) => ({ label: String(h || 'Col ' + (i+1)), idx: i }));
+      fileHeaders = json[headerRow].map((h, i) => ({ label: String(h || 'Col '+(i+1)), idx: i }));
       fileRows    = json.slice(headerRow + 1).filter(r => r.some(c => c !== ''));
 
       document.getElementById('fileNameText').textContent =
         file.name + ' · ' + fileRows.length + ' filas · Hoja: ' + fileWb.SheetNames[0];
       document.getElementById('fileName').classList.add('show');
-
       populateColMap();
       document.getElementById('colMap').classList.add('show');
-
-    } catch(err) {
-      showToast('Error al leer el archivo: ' + err.message, 'err');
-    }
+    } catch(err) { showToast('Error al leer: ' + err.message, 'err'); }
   };
   reader.readAsArrayBuffer(file);
 }
@@ -155,7 +282,7 @@ function populateColMap() {
   const keywords = [
     ['desc','descrip','item','nombre','actividad','obra','detalle'],
     ['unid','unidad','ud','um','medida','unit'],
-    ['cant','cantidad','qty','volumen','vol'],
+    ['cant','cantidad','qty','volumen'],
     ['precio','unitario','p.u','pu','costo','tarifa'],
   ];
   ['mapDesc','mapUnit','mapQty','mapPrice'].forEach((id, si) => {
@@ -163,8 +290,7 @@ function populateColMap() {
     sel.innerHTML = '<option value="-1">— No usar —</option>';
     fileHeaders.forEach(h => {
       const opt = document.createElement('option');
-      opt.value = h.idx;
-      opt.textContent = h.label;
+      opt.value = h.idx; opt.textContent = h.label;
       const hl = String(h.label).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
       if (keywords[si].some(k => hl.includes(k))) opt.selected = true;
       sel.appendChild(opt);
@@ -177,30 +303,24 @@ function importFromFile() {
   const iUnit = parseInt(document.getElementById('mapUnit').value);
   const iQty  = parseInt(document.getElementById('mapQty').value);
   const iPrc  = parseInt(document.getElementById('mapPrice').value);
-
   if (iDesc < 0 || iQty < 0 || iPrc < 0) {
-    showToast('Asigna al menos Descripción, Cantidad y Precio.', 'err');
-    return;
+    showToast('Asigna al menos Descripción, Cantidad y Precio.', 'err'); return;
   }
-
   const newItems = [];
   for (const row of fileRows) {
-    const desc = String(row[iDesc] || '').trim();
-    if (!desc) continue;
-    /* SheetJS ya entrega JS numbers — parseFloat es seguro */
+    const desc = String(row[iDesc] || '').trim(); if (!desc) continue;
     const qty   = parseFloat(row[iQty])  || 0;
     const price = parseFloat(row[iPrc])  || 0;
     const unit  = iUnit >= 0 ? String(row[iUnit] || 'glb.').trim() : 'glb.';
-    newItems.push({ desc, unit, qty: qty || 1, price, locked:false, minQty:'', maxQty:'' });
+    const qtyFinal = esUnidadEntera(unit) ? Math.round(qty || 1) : (qty || 1);
+    newItems.push({ desc, unit, qty: qtyFinal, price, locked:false, minQty:'', maxQty:'' });
   }
-
-  if (!newItems.length) { showToast('No se encontraron filas con datos.', 'err'); return; }
-
+  if (!newItems.length) { showToast('No se encontraron datos.', 'err'); return; }
   items    = [...items, ...newItems];
   origQtys = items.map(i => i.qty);
   checked  = items.map(() => true);
   render();
-  showToast(newItems.length + ' ítem(s) importados desde ' + fileWb.SheetNames[0] + '.');
+  showToast(newItems.length + ' ítem(s) importados.');
   cancelFile();
 }
 
@@ -212,8 +332,7 @@ function cancelFile() {
 }
 
 /* ═══════════════════════════════════════════════════
-   IMPORTAR PEGANDO DESDE EXCEL
-   Aquí sí necesitamos detectar el formato
+   PEGAR DESDE EXCEL
 ═══════════════════════════════════════════════════ */
 const pasteZone = document.getElementById('pasteZone');
 pasteZone.addEventListener('click',  () => pasteZone.focus());
@@ -223,33 +342,23 @@ pasteZone.addEventListener('paste', e => {
   e.preventDefault();
   const text = e.clipboardData.getData('text/plain');
   if (!text) { showToast('No se detectó contenido.', 'err'); return; }
-
-  /* Detectar formato UNA VEZ para todo el bloque pegado */
-  const fmt = detectarFormato(text);
+  const fmt    = detectarFormato(text);
   actualizarBadgeFmt(fmt);
-
   const parsed = parsePastedText(text, fmt);
   if (!parsed.length) { showToast('No se pudo interpretar la tabla.', 'err'); return; }
-
   items    = [...items, ...parsed];
   origQtys = items.map(i => i.qty);
   checked  = items.map(() => true);
   render();
-  const fmtLabel = fmt === 'coma' ? 'decimal=coma' : 'decimal=punto';
-  showToast(parsed.length + ' ítem(s) importados · Formato: ' + fmtLabel);
+  showToast(parsed.length + ' ítem(s) importados · Formato: ' + (fmt === 'coma' ? 'decimal=coma' : 'decimal=punto'));
   pasteZone.blur();
 });
 
 function actualizarBadgeFmt(fmt) {
   const badge = document.getElementById('fmtBadge');
   if (!badge) return;
-  if (fmt === 'coma') {
-    badge.className = 'fmt-badge bo';
-    badge.textContent = 'Decimal = coma  (Ej: 2.360,59)';
-  } else {
-    badge.className = 'fmt-badge en';
-    badge.textContent = 'Decimal = punto (Ej: 2,360.59)';
-  }
+  badge.className = 'fmt-badge ' + (fmt === 'coma' ? 'bo' : 'en');
+  badge.textContent = fmt === 'coma' ? 'Decimal = coma  (Ej: 2.360,59)' : 'Decimal = punto (Ej: 2,360.59)';
 }
 
 function parsePastedText(text, fmt) {
@@ -262,8 +371,10 @@ function parsePastedText(text, fmt) {
     if      (cols.length === 1) { desc = cols[0]; }
     else if (cols.length === 2) { desc = cols[0]; qty = parsearNum(cols[1], fmt); }
     else if (cols.length === 3) { desc = cols[0]; unit = cols[1]; qty = parsearNum(cols[2], fmt); }
-    else                        { desc = cols[0]; unit = cols[1]; qty = parsearNum(cols[2], fmt); price = parsearNum(cols[3], fmt); }
-    if (desc) out.push({ desc, unit, qty: qty || 1, price: price || 0, locked:false, minQty:'', maxQty:'' });
+    else { desc = cols[0]; unit = cols[1]; qty = parsearNum(cols[2], fmt); price = parsearNum(cols[3], fmt); }
+    if (!desc) continue;
+    const qtyFinal = esUnidadEntera(unit) ? Math.round(qty || 1) : (qty || 1);
+    out.push({ desc, unit, qty: qtyFinal, price: price || 0, locked:false, minQty:'', maxQty:'' });
   }
   return out;
 }
@@ -278,15 +389,13 @@ function updateMetrics() {
   const target = parseFloat(document.getElementById('targetAmt').value) || 0;
   const diff   = total - target;
   const factor = total > 0 ? target / total : 1;
-
-  document.getElementById('mActual').textContent = fmtDisp(total)  + ' Bs';
-  document.getElementById('mTarget').textContent = fmtDisp(target) + ' Bs';
-  document.getElementById('mFactor').textContent = factor.toFixed(5);
-  document.getElementById('totalVal').textContent = fmtDisp(total) + ' Bs';
-
+  document.getElementById('mActual').textContent  = fmtDisp(total)  + ' Bs';
+  document.getElementById('mTarget').textContent  = fmtDisp(target) + ' Bs';
+  document.getElementById('mFactor').textContent  = factor.toFixed(5);
+  document.getElementById('totalVal').textContent = fmtDisp(total)  + ' Bs';
   const de = document.getElementById('mDiff');
   de.textContent = (diff >= 0 ? '+' : '') + fmtDisp(diff) + ' Bs';
-  de.className   = 'hm-value ' + (Math.abs(diff) < 0.5 ? 'ok' : diff > 0 ? 'bad' : 'warn');
+  de.className   = 'hm-value ' + (Math.abs(diff) < 0.01 ? 'ok' : diff > 0 ? 'bad' : 'warn');
 }
 
 /* ═══════════════════════════════════════════════════
@@ -298,7 +407,7 @@ function setDec(d) {
 }
 
 /* ═══════════════════════════════════════════════════
-   CONDICIONES MIN / MAX
+   CONDICIONES
 ═══════════════════════════════════════════════════ */
 function applyConditions(item, newQty) {
   let q = newQty;
@@ -306,7 +415,7 @@ function applyConditions(item, newQty) {
   const mx = parseFloat(item.maxQty);
   if (!isNaN(mn) && q < mn) q = mn;
   if (!isNaN(mx) && q > mx) q = mx;
-  return rawNum(q, decimals);
+  return redondearSegunUnidad(item, q);
 }
 
 /* ═══════════════════════════════════════════════════
@@ -316,12 +425,13 @@ function render() {
   const list = document.getElementById('itemsList');
   list.innerHTML = '';
   items.forEach((item, idx) => {
-    const p      = item.qty * item.price;
-    const col    = idx % 5;
-    const isChk  = checked[idx] !== false;
+    const p     = item.qty * item.price;
+    const col   = idx % 5;
+    const isChk = checked[idx] !== false;
+    const isInt = esUnidadEntera(item.unit);
 
     const card = document.createElement('div');
-    card.className    = 'item-card';
+    card.className     = 'item-card';
     card.dataset.color = col;
 
     card.innerHTML = `
@@ -330,20 +440,21 @@ function render() {
           onchange="toggleItem(${idx}, this.checked)" aria-label="Ítem ${idx+1}">
         <div class="item-num">${idx+1}</div>
         <input class="item-desc" type="text"
-          value="${item.desc.replace(/"/g, '&quot;')}"
+          value="${item.desc.replace(/"/g,'&quot;')}"
           onchange="updField(${idx},'desc',this.value)"
           placeholder="Descripción del ítem">
         <div class="item-badges">
           ${item.locked ? '<span class="badge-lock"><i class="ti ti-lock"></i> Bloqueado</span>' : ''}
+          ${isInt       ? '<span class="badge-int" title="Unidad entera — sin decimales">N°</span>' : ''}
           ${item.price === 0 ? '<span class="badge-warn">⚠ precio 0</span>' : ''}
         </div>
         <div class="item-icons">
           <button class="icon-btn ${item.locked ? 'active' : ''}"
             onclick="toggleLock(${idx})"
-            title="${item.locked ? 'Desbloquear cantidad' : 'Bloquear cantidad'}">
+            title="${item.locked ? 'Desbloquear' : 'Bloquear'}">
             <i class="ti ti-${item.locked ? 'lock' : 'lock-open'}"></i>
           </button>
-          <button class="icon-btn del" onclick="delRow(${idx})" aria-label="Eliminar ítem ${idx+1}">
+          <button class="icon-btn del" onclick="delRow(${idx})" aria-label="Eliminar">
             <i class="ti ti-x"></i>
           </button>
         </div>
@@ -352,14 +463,16 @@ function render() {
         <div class="ifield">
           <label>Unidad</label>
           <input type="text" value="${item.unit}"
-            onchange="updField(${idx},'unit',this.value)"
+            onchange="updUnit(${idx}, this.value)"
             style="text-align:center;"
             ${item.locked ? 'readonly' : ''}>
         </div>
         <div class="ifield">
-          <label>Cantidad</label>
+          <label>Cantidad ${isInt ? '<span style="color:#534AB7;font-size:9px;">(entero)</span>' : ''}</label>
           <input type="number" class="r" id="qty${idx}"
-            value="${rawNum(item.qty, 4)}" step="any"
+            value="${rawNum(item.qty, isInt ? 0 : 4)}"
+            step="${isInt ? '1' : 'any'}"
+            ${isInt ? 'min="1"' : ''}
             onchange="updQty(${idx}, this.value)"
             ${item.locked ? 'readonly' : ''}>
         </div>
@@ -377,15 +490,13 @@ function render() {
       <div class="item-conds">
         <div class="cond-field">
           <label>≥ Cantidad mínima</label>
-          <input type="number" value="${item.minQty}" step="any"
-            placeholder="Sin mín."
-            onchange="updField(${idx},'minQty',this.value)">
+          <input type="number" value="${item.minQty}" step="${isInt?'1':'any'}"
+            placeholder="Sin mín." onchange="updField(${idx},'minQty',this.value)">
         </div>
         <div class="cond-field">
           <label>≤ Cantidad máxima</label>
-          <input type="number" value="${item.maxQty}" step="any"
-            placeholder="Sin máx."
-            onchange="updField(${idx},'maxQty',this.value)">
+          <input type="number" value="${item.maxQty}" step="${isInt?'1':'any'}"
+            placeholder="Sin máx." onchange="updField(${idx},'maxQty',this.value)">
         </div>
       </div>
     `;
@@ -400,7 +511,7 @@ function refreshParcial(idx) {
 }
 
 /* ═══════════════════════════════════════════════════
-   CRUD DE ÍTEMS
+   CRUD
 ═══════════════════════════════════════════════════ */
 function updField(idx, key, val) {
   items[idx][key] = val;
@@ -408,23 +519,35 @@ function updField(idx, key, val) {
   updateMetrics();
 }
 
+function updUnit(idx, val) {
+  items[idx].unit = val;
+  // Si cambia a unidad entera, redondear cantidad actual
+  if (esUnidadEntera(val)) {
+    items[idx].qty = Math.round(items[idx].qty);
+    const inp = document.getElementById('qty' + idx);
+    if (inp) { inp.value = items[idx].qty; inp.step = '1'; }
+  } else {
+    const inp = document.getElementById('qty' + idx);
+    if (inp) inp.step = 'any';
+  }
+  refreshParcial(idx);
+  updateMetrics();
+}
+
 function updQty(idx, val) {
-  items[idx].qty = parseFloat(val) || 0;
+  let q = parseFloat(val) || 0;
+  if (esUnidadEntera(items[idx].unit)) q = Math.round(q);
+  items[idx].qty = q;
+  // Corregir el input si se escribió decimal en unidad entera
+  const inp = document.getElementById('qty' + idx);
+  if (inp && esUnidadEntera(items[idx].unit)) inp.value = q;
   refreshParcial(idx);
   updateMetrics();
 }
 
 function toggleItem(idx, val) { checked[idx] = val; }
-
-function toggleAll(chk) {
-  checked = items.map(() => chk.checked);
-  render();
-}
-
-function toggleLock(idx) {
-  items[idx].locked = !items[idx].locked;
-  render();
-}
+function toggleAll(chk) { checked = items.map(() => chk.checked); render(); }
+function toggleLock(idx) { items[idx].locked = !items[idx].locked; render(); }
 
 function addRow() {
   items.push({ desc:'Nuevo ítem', unit:'glb.', qty:1, price:0, locked:false, minQty:'', maxQty:'' });
@@ -450,6 +573,17 @@ function loadDefault() {
   showToast('Datos de ejemplo cargados.');
 }
 
+/* ── NUEVO: Limpiar todos los ítems ── */
+function limpiarItems() {
+  if (!items.length) { showToast('No hay ítems que limpiar.', 'warn'); return; }
+  if (!confirm('¿Limpiar todos los ítems? Esta acción no se puede deshacer.')) return;
+  items    = [];
+  origQtys = [];
+  checked  = [];
+  render();
+  showToast('Lista limpiada. Puedes importar o agregar ítems nuevos.');
+}
+
 /* ═══════════════════════════════════════════════════
    AJUSTE
 ═══════════════════════════════════════════════════ */
@@ -458,18 +592,15 @@ function calcAjuste() {
   const method = document.getElementById('method').value;
   const total  = getTotal();
 
-  if (!items.length)              { showToast('Agrega ítems primero.', 'err'); return; }
+  if (!items.length)               { showToast('Agrega ítems primero.', 'err'); return; }
   if (!target && method !== 'pct') { showToast('Ingresa un monto objetivo.', 'err'); return; }
 
-  /* Advertencia precio cero */
   const zeros = items.filter(i => i.price === 0 && !i.locked);
-  if (zeros.length) showToast(zeros.length + ' ítem(s) con precio cero — verifica antes de ajustar.', 'warn');
+  if (zeros.length) showToast(zeros.length + ' ítem(s) con precio cero.', 'warn');
 
-  /* Snapshot para historial */
-  const snapBefore   = items.map(it => ({ ...it }));
-  const totalBefore  = total;
+  const snapBefore  = items.map(it => ({ ...it }));
+  const totalBefore = total;
 
-  /* ── Métodos ── */
   if (method === 'prop') {
     const f = target / total;
     items.forEach(item => {
@@ -485,8 +616,7 @@ function calcAjuste() {
       const f = need / selT;
       selIds.forEach(i => { items[i].qty = applyConditions(items[i], items[i].qty * f); });
     } else {
-      showToast('Sin margen suficiente con los ítems seleccionados.', 'err');
-      return;
+      showToast('Sin margen con los ítems seleccionados.', 'err'); return;
     }
 
   } else if (method === 'big') {
@@ -497,8 +627,7 @@ function calcAjuste() {
     let rem = target - total;
     for (const i of idxs) {
       if (Math.abs(rem) < 0.01) break;
-      const it = items[i];
-      if (it.price === 0) continue;
+      const it = items[i]; if (it.price === 0) continue;
       const np = it.qty * it.price + rem;
       if (np > 0) { it.qty = applyConditions(it, np / it.price); rem = 0; break; }
     }
@@ -511,7 +640,6 @@ function calcAjuste() {
     });
   }
 
-  /* Guardar en historial */
   history.unshift({ ts: new Date(), method, total: getTotal(), before: totalBefore, snap: snapBefore });
   if (history.length > 10) history.pop();
   renderHistory();
@@ -519,14 +647,17 @@ function calcAjuste() {
   origQtys = items.map(i => i.qty);
   render();
 
-  const diff = Math.abs(getTotal() - target);
+  const diff    = getTotal() - target;
+  const absDiff = Math.abs(diff);
+
   if (method === 'pct') {
-    showToast('Ajuste por porcentaje aplicado.');
+    showToast('Ajuste por porcentaje aplicado. Total: ' + fmtDisp(getTotal()) + ' Bs');
+  } else if (absDiff < 0.01) {
+    showToast('¡Diferencia cero! Total cuadrado exactamente.');
   } else {
-    showToast(
-      diff < 1 ? 'Total cuadrado correctamente.' : 'Ajuste aplicado · Residual: ' + fmtDisp(diff) + ' Bs',
-      diff < 1 ? 'ok' : 'warn'
-    );
+    // Hay diferencia residual → mostrar recomendaciones
+    showToast('Diferencia residual: ' + fmtDisp(absDiff) + ' Bs — ver recomendaciones', 'warn');
+    setTimeout(() => mostrarRecomendacion(diff, target, getTotal(), method), 400);
   }
 }
 
@@ -545,10 +676,7 @@ const METHOD_LABELS = { prop:'Proporcional', sel:'Seleccionados', big:'Mayor pes
 
 function renderHistory() {
   const el = document.getElementById('histList');
-  if (!history.length) {
-    el.innerHTML = '<div class="hist-empty">Sin ajustes aún</div>';
-    return;
-  }
+  if (!history.length) { el.innerHTML = '<div class="hist-empty">Sin ajustes aún</div>'; return; }
   el.innerHTML = history.map((h, i) => `
     <div class="hist-item">
       <div>
@@ -557,7 +685,7 @@ function renderHistory() {
       </div>
       <div class="hist-right">
         <div class="hist-total">${fmtDisp(h.total)} Bs</div>
-        <button class="btn btn-sm btn-ghost" onclick="restoreHistory(${i})" title="Restaurar este estado">
+        <button class="btn btn-sm btn-ghost" onclick="restoreHistory(${i})" title="Restaurar">
           <i class="ti ti-arrow-back-up"></i>
         </button>
       </div>
@@ -566,8 +694,7 @@ function renderHistory() {
 }
 
 function restoreHistory(i) {
-  const h = history[i];
-  if (!h || !h.snap) return;
+  const h = history[i]; if (!h || !h.snap) return;
   items    = h.snap.map(it => ({ ...it }));
   origQtys = items.map(it => it.qty);
   checked  = items.map(() => true);
@@ -575,65 +702,51 @@ function restoreHistory(i) {
   showToast('Estado restaurado desde el historial.');
 }
 
-function clearHistory() {
-  history = [];
-  renderHistory();
-}
+function clearHistory() { history = []; renderHistory(); }
 
 /* ═══════════════════════════════════════════════════
    EXPORTAR EXCEL
 ═══════════════════════════════════════════════════ */
 function exportXlsx() {
   if (!items.length) { showToast('No hay ítems para exportar.', 'err'); return; }
-
   const target = parseFloat(document.getElementById('targetAmt').value) || 0;
   const total  = getTotal();
   const proy   = document.getElementById('proyNombre').value;
-  const fecha  = new Date().toLocaleDateString('es-BO');
-
   const data = [
     ['GOBIERNO AUTÓNOMO MUNICIPAL DE COCHABAMBA'],
     ['SECRETARIA DE PLANIFICACIÓN — DIRECCIÓN DE PROYECTOS'],
     ['PROYECTO: ' + proy],
-    ['FECHA: ' + fecha + '   |   Decimales: ' + decimals],
+    ['FECHA: ' + new Date().toLocaleDateString('es-BO') + '   |   Decimales: ' + decimals],
     [],
-    ['N°', 'Descripción', 'Unid.', 'Cantidad', 'Precio Unit. (Bs)', 'Parcial (Bs)', 'Mín. Cant.', 'Máx. Cant.', 'Bloqueado'],
+    ['N°','Descripción','Unid.','Cantidad','Precio Unit. (Bs)','Parcial (Bs)','Mín.','Máx.','Bloqueado'],
     ...items.map((it, i) => [
-      i + 1,
-      it.desc,
-      it.unit,
-      rawNum(it.qty,   decimals),
+      i+1, it.desc, it.unit,
+      esUnidadEntera(it.unit) ? Math.round(it.qty) : rawNum(it.qty, decimals),
       rawNum(it.price, 4),
       rawNum(it.qty * it.price, 2),
-      it.minQty  || '—',
-      it.maxQty  || '—',
-      it.locked  ? 'Sí' : 'No',
+      it.minQty || '—', it.maxQty || '—',
+      it.locked ? 'Sí' : 'No',
     ]),
     [],
-    ['', '', '', '', 'TOTAL',          rawNum(total,          2)],
-    ['', '', '', '', 'Monto objetivo',  rawNum(target,         2)],
-    ['', '', '', '', 'Diferencia',      rawNum(total - target, 2)],
+    ['','','','','TOTAL',         rawNum(total,          2)],
+    ['','','','','Monto objetivo', rawNum(target,         2)],
+    ['','','','','Diferencia',     rawNum(total - target, 2)],
   ];
-
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet(data);
-  ws['!cols'] = [
-    { wch:4 }, { wch:50 }, { wch:7 }, { wch:12 },
-    { wch:18 }, { wch:14 }, { wch:10 }, { wch:10 }, { wch:9 },
-  ];
+  ws['!cols'] = [{wch:4},{wch:50},{wch:7},{wch:12},{wch:18},{wch:14},{wch:8},{wch:8},{wch:9}];
   XLSX.utils.book_append_sheet(wb, ws, 'Presupuesto');
   XLSX.writeFile(wb, 'presupuesto_ajustado.xlsx');
-  showToast('Archivo Excel generado y descargado.');
+  showToast('Excel generado y descargado.');
 }
 
 /* ═══════════════════════════════════════════════════
-   EVENTOS GLOBALES
+   EVENTOS
 ═══════════════════════════════════════════════════ */
 document.getElementById('method').addEventListener('change', function() {
   document.getElementById('pctWrap').style.display = this.value === 'pct' ? 'block' : 'none';
 });
 document.getElementById('targetAmt').addEventListener('input', updateMetrics);
 
-/* ── Iniciar ── */
 loadDefault();
 renderHistory();
