@@ -601,6 +601,7 @@ function calcAjuste() {
   const snapBefore  = items.map(it => ({ ...it }));
   const totalBefore = total;
 
+  /* ── PASO 1: Ajuste principal ── */
   if (method === 'prop') {
     const f = target / total;
     items.forEach(item => {
@@ -640,6 +641,69 @@ function calcAjuste() {
     });
   }
 
+  /* ── PASO 2: Garantizar diferencia CERO ──────────────────────────────
+     Después del ajuste principal puede quedar residuo por:
+       - redondeo a entero en unidades glb./pza./etc.
+       - condiciones min/max que limitan el movimiento
+     
+     Estrategia en orden de prioridad:
+     1. Distribuir residuo en ítems decimales (los que admiten fracción)
+     2. Si no hay decimales disponibles, absorber en precio unitario del mayor peso
+     3. Siempre se llega a cero exacto
+  ──────────────────────────────────────────────────────────────────── */
+  if (method !== 'pct') {
+    let residuo = rawNum(target - getTotal(), 2);
+
+    if (Math.abs(residuo) >= 0.01) {
+
+      /* Candidatos: no bloqueados, precio > 0, participan en el ajuste */
+      const candidatos = items
+        .map((it, i) => i)
+        .filter(i => !items[i].locked && items[i].price > 0 &&
+                     (method === 'prop' || checked[i] !== false));
+
+      /* Intento 1 — ítems que admiten decimales, ordenados por mayor peso */
+      const decimales = candidatos
+        .filter(i => !esUnidadEntera(items[i].unit))
+        .sort((a, b) => items[b].qty * items[b].price - items[a].qty * items[a].price);
+
+      for (const i of decimales) {
+        if (Math.abs(residuo) < 0.005) break;
+        const it     = items[i];
+        const maxMov = it.qty * it.price + residuo; // parcial nuevo
+        if (maxMov > 0) {
+          const qNueva = rawNum(maxMov / it.price, decimals);
+          /* Verificar condiciones */
+          const mn = parseFloat(it.minQty), mx = parseFloat(it.maxQty);
+          let qFinal = qNueva;
+          if (!isNaN(mn) && qFinal < mn) qFinal = mn;
+          if (!isNaN(mx) && qFinal > mx) qFinal = mx;
+          residuo = rawNum(residuo - (qFinal - it.qty) * it.price, 2);
+          it.qty  = qFinal;
+        }
+      }
+
+      /* Intento 2 — si aún queda residuo, ajustar precio unitario del ítem de mayor peso */
+      if (Math.abs(residuo) >= 0.01) {
+        const porPeso = candidatos
+          .sort((a, b) => items[b].qty * items[b].price - items[a].qty * items[a].price);
+
+        for (const i of porPeso) {
+          if (Math.abs(residuo) < 0.005) break;
+          const it = items[i];
+          if (it.qty === 0) continue;
+          const pNuevo = rawNum((it.qty * it.price + residuo) / it.qty, 4);
+          if (pNuevo > 0) {
+            residuo     = rawNum(residuo - (pNuevo - it.price) * it.qty, 2);
+            it.price    = pNuevo;
+            it._precioAjustado = true; // marcar para avisar al usuario
+          }
+        }
+      }
+    }
+  }
+
+  /* ── Guardar historial y renderizar ── */
   history.unshift({ ts: new Date(), method, total: getTotal(), before: totalBefore, snap: snapBefore });
   if (history.length > 10) history.pop();
   renderHistory();
@@ -647,17 +711,27 @@ function calcAjuste() {
   origQtys = items.map(i => i.qty);
   render();
 
-  const diff    = getTotal() - target;
-  const absDiff = Math.abs(diff);
+  /* ── Mensaje final ── */
+  const diffFinal = Math.abs(getTotal() - target);
+  const preciosAjustados = items.filter(i => i._precioAjustado);
+  // Limpiar flags
+  items.forEach(i => delete i._precioAjustado);
 
   if (method === 'pct') {
     showToast('Ajuste por porcentaje aplicado. Total: ' + fmtDisp(getTotal()) + ' Bs');
-  } else if (absDiff < 0.01) {
-    showToast('¡Diferencia cero! Total cuadrado exactamente.');
+  } else if (diffFinal < 0.01) {
+    if (preciosAjustados.length > 0) {
+      showToast(
+        '¡Monto objetivo logrado! Se ajustó el precio unitario de "' +
+        preciosAjustados[0].desc.substring(0, 30) + '..." para cuadrar exactamente.',
+        'ok'
+      );
+    } else {
+      showToast('¡Diferencia cero! Monto objetivo logrado exactamente.');
+    }
   } else {
-    // Hay diferencia residual → mostrar recomendaciones
-    showToast('Diferencia residual: ' + fmtDisp(absDiff) + ' Bs — ver recomendaciones', 'warn');
-    setTimeout(() => mostrarRecomendacion(diff, target, getTotal(), method), 400);
+    /* Caso extremo: todos bloqueados o condiciones imposibles */
+    showToast('No fue posible llegar al objetivo — revisa bloqueos y condiciones.', 'err');
   }
 }
 
